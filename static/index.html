@@ -1,0 +1,310 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PixelForge — โปรแกรมแต่งภาพ</title>
+
+    <!-- ฟอนต์จาก Google -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Inter:opsz,wght@14..32,400;14..32,500;14..32,600;14..32,700&display=swap" rel="stylesheet" />
+
+    <!-- CSS ภายนอก -->
+    <link rel="stylesheet" href="style.css" />
+
+    <style>
+        /* โลโก้ */
+        .logo-area {
+            display: flex;
+            align-items: center;
+            gap: 14px;
+        }
+        .logo-icon {
+            width: 48px;
+            height: 48px;
+            border-radius: 12px;
+            object-fit: cover;
+            filter: drop-shadow(0 0 12px rgba(96, 165, 250, 0.5));
+            transition: transform 0.3s ease;
+            display: block;
+        }
+        .logo-icon:hover {
+            transform: scale(1.1) rotate(-4deg);
+        }
+        .logo-text h1 {
+            font-size: 2rem;
+            font-weight: 700;
+            margin: 0;
+            background: linear-gradient(135deg, #60A5FA, #A78BFA, #F472B6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            letter-spacing: -0.5px;
+            text-shadow: 0 0 30px rgba(167, 139, 250, 0.2);
+        }
+        .logo-text p {
+            font-size: 0.7rem;
+            color: #94A3B8;
+            margin: 0;
+            letter-spacing: 0.3px;
+            opacity: 0.8;
+        }
+
+        .header-badges {
+            margin-left: auto;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+
+        .app-header {
+            border-bottom: 1px solid rgba(255,255,255,0.01);
+            padding: 16px 24px;
+        }
+        .badge-pro {
+            background: rgba(96, 165, 250, 0.15);
+            border: 1px solid rgba(96, 165, 250, 0.3);
+        }
+        .status-tag {
+            background: rgba(255,255,255,0.01);
+        }
+
+        /* ไอคอนในปุ่มทุกปุ่ม */
+        .btn-icon {
+            width: 20px;
+            height: 20px;
+            margin-right: 6px;
+            vertical-align: middle;
+            border-radius: 4px;
+            object-fit: cover;
+            filter: drop-shadow(0 0 4px rgba(96, 165, 250, 0.3));
+            transition: transform 0.2s ease;
+        }
+        button:hover .btn-icon {
+            transform: scale(1.1) rotate(-4deg);
+        }
+        /* ปุ่มเล็ก (ซูม) ปรับไอคอนให้เล็กลง */
+        .floating-zoom button .btn-icon {
+            width: 14px;
+            height: 14px;
+            margin-right: 2px;
+        }
+        /* เว้นระยะปุ่มให้ข้อความอยู่กับที่ */
+        button {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 4px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="app-container">
+
+        <!-- ===== HEADER ===== -->
+        <header class="app-header">
+            <div class="logo-area">
+                <img 
+                    src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" 
+                    alt="PixelForgeTrojan Logo" 
+                    class="logo-icon"
+                    loading="lazy"
+                 
+                   />
+                <div class="logo-text">
+                    <h1>PixelForgeTrojan(B.P)</h1>
+                    <p>โปรแกรมนี้นี้สร้างด้วยอุ๋ยบางแค</p>
+                </div>
+            </div>
+            <div class="header-badges">
+                <span class="badge-pro">B.P</span>
+                <span class="status-tag" id="imageStatus">
+                    <span>●</span> ไม่มีภาพ
+                </span>
+                <span class="status-tag" id="dimensionTag">
+                    📐 0 × 0
+                </span>
+            </div>
+        </header>
+
+        <!-- ===== WORKSPACE ===== -->
+        <div class="workspace">
+
+            <!-- CANVAS -->
+            <section class="canvas-panel">
+                <div class="canvas-wrapper" id="canvasWrapper">
+                    <canvas id="mainCanvas" width="800" height="500"></canvas>
+                    <div class="drag-overlay">
+                        <span class="icon-big">📁</span>
+                        <span style="font-weight:600;">วางไฟล์ภาพที่นี่</span>
+                        <span style="font-size:0.8rem; opacity:0.6;">หรือใช้ปุ่มด้านล่าง</span>
+                    </div>
+                </div>
+            </section>
+
+            <!-- CONTROLS -->
+            <div class="controls-panel">
+
+                <!-- Adjustment -->
+                <div class="card">
+                    <div class="card-title">🎚️ ปรับแต่ง</div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span>ความสว่าง</span>
+                            <span class="value-badge" id="brightnessVal">0</span>
+                        </div>
+                        <input type="range" id="brightness" min="-100" max="100" value="0" step="1" />
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span>ความคมชัด</span>
+                            <span class="value-badge" id="contrastVal">0</span>
+                        </div>
+                        <input type="range" id="contrast" min="-100" max="100" value="0" step="1" />
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span>ความอิ่มตัว</span>
+                            <span class="value-badge" id="saturationVal">0</span>
+                        </div>
+                        <input type="range" id="saturation" min="-100" max="100" value="0" step="1" />
+                    </div>
+
+                    <div class="slider-group">
+                        <div class="slider-header">
+                            <span>เบลอ</span>
+                            <span class="value-badge" id="blurVal">0</span>
+                        </div>
+                        <input type="range" id="blur" min="0" max="20" value="0" step="0.5" />
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="secondary" id="resetAdjustBtn">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            ↺ รีเซ็ต
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Filters & Actions -->
+                <div class="card">
+                    <div class="card-title">🧪 ฟิลเตอร์ &amp; เครื่องมือ</div>
+
+                    <select id="filterSelect">
+                        <option value="none">— ไม่มีฟิลเตอร์ —</option>
+                        <option value="grayscale">ขาวดำ</option>
+                        <option value="sepia">ซีเปีย</option>
+                        <option value="invert">กลับสี</option>
+                        <option value="vintage">วินเทจ</option>
+                        <option value="cool">โทนเย็น</option>
+                        <option value="warm">โทนอุ่น</option>
+                    </select>
+
+                    <div class="btn-group">
+                        <button class="primary" id="applyFilterBtn">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            ✔ ใช้ฟิลเตอร์
+                        </button>
+                        <button class="danger" id="removeFilterBtn">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            ✕ ลบฟิลเตอร์
+                        </button>
+                    </div>
+
+                    <div class="btn-group">
+                        <button class="secondary" id="flipHorizBtn">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            ↔ กลับซ้าย-ขวา
+                        </button>
+                        <button class="secondary" id="flipVertBtn">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            ↕ กลับบน-ล่าง
+                        </button>
+                        <button class="warning" id="rotateBtn">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            ⟳ หมุน 90°
+                        </button>
+                    </div>
+
+                    <div class="btn-group" style="margin-top:8px; border-top:1px solid #1E293B; padding-top:12px;">
+                        <button class="primary" id="removeBgBtn" style="flex:1;">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            ✨ ลบพื้นหลัง
+                        </button>
+                    </div>
+
+                    <div class="progress-container">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+
+                <!-- Upload / Voice / Export -->
+                <div class="card">
+                    <div class="card-title">📂 จัดการไฟล์</div>
+
+                    <div class="btn-group">
+                        <button class="primary" id="uploadBtn">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            📤 อัปโหลดภาพ
+                        </button>
+                        <button class="secondary" id="exportBtn">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            💾 ดาวน์โหลด
+                        </button>
+                        <button class="voice-btn" id="voiceBtn">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            🎤 เสียง
+                        </button>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:12px; margin-top:12px; flex-wrap:wrap;">
+                        <span class="voice-status" id="voiceStatus">
+                            <span id="voiceIndicator">⚪</span> รอคำสั่ง
+                        </span>
+                        <span style="font-size:0.75rem; color:#64748B;" id="voiceHint">พูดว่า "เพิ่มความสว่าง"</span>
+                    </div>
+
+                    <div style="margin-top:8px; display:flex; gap:8px; flex-wrap:wrap;">
+                        <button class="secondary" id="resetAllBtn" style="flex:0 1 auto;">
+                            <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" />
+                            🔄 รีเซ็ตทั้งหมด
+                        </button>
+                        <span style="font-size:0.7rem; color:#475569; display:flex; align-items:center; margin-left:auto;">
+                            ⚡ เปลี่ยนได้ทันที
+                        </span>
+                    </div>
+                </div>
+
+            </div><!-- /controls-panel -->
+        </div><!-- /workspace -->
+
+        <!-- ===== FLOATING ZOOM ===== -->
+        <div class="floating-zoom hidden" id="floatingZoom">
+            <span class="zoom-label">🔍</span>
+            <span class="zoom-value" id="zoomValue">100%</span>
+            <button id="zoomOutBtn">
+                <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" /> −
+            </button>
+            <button id="zoomInBtn">
+                <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" /> +
+            </button>
+            <button id="zoomResetBtn" style="background:transparent; color:#94A3B8; padding:4px 8px; font-size:0.7rem;">
+                <img src="https://od.lk/s/N18yNzAwOTQ0NzNf/11.png" class="btn-icon" alt="icon" /> ⌖
+            </button>
+        </div>
+
+    </div><!-- /app-container -->
+
+    <!-- JavaScript ภายนอก -->
+    <script src="script.js"></script>
+    <script src="script4.js"></script>
+    <script src="script3.js"></script>
+    <script src="script9.js"></script>
+     <script src="script10.js"></script>
+</body>
+</html>
