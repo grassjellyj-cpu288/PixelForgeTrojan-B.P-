@@ -1,25 +1,19 @@
-// script10.js - ปุ่มเปิด TTS Studio (แก้ไขปัญหา volume)
+// script10.js - ปุ่มเปิด main.py (แก้ไขแล้ว พร้อม Debug)
 (function() {
     "use strict";
 
-    const SERVER_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
-        ? 'http://localhost:5000'
-        : window.location.origin;
+    const SERVER_URL = 'http://localhost:5000';  // ถ้าใช้ IP อื่นให้เปลี่ยนที่นี่
 
-    const TIMEOUT_MS = 5000;
-    const CHECK_INTERVAL = 15000;
-    const IS_RENDER = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
-
-    // ========== ปุ่มหลัก ==========
+    // ---- สร้างปุ่มลอย ----
     function createFloatingButton() {
         if (document.getElementById('script10-btn')) return;
 
         const btn = document.createElement('button');
         btn.id = 'script10-btn';
-        btn.innerHTML = IS_RENDER ? '🎙️ TTS Studio (Web)' : '🚀 เปิด TTS Studio';
+        btn.innerHTML = '🚀 เปิด TTS Studio';
         btn.style.cssText = `
             position: fixed;
-            bottom: 100px;
+            bottom: 30px;
             right: 30px;
             z-index: 9999;
             padding: 14px 24px;
@@ -33,11 +27,13 @@
             cursor: pointer;
             transition: all 0.3s ease;
             font-family: 'Inter', sans-serif;
+            letter-spacing: 0.3px;
             display: flex;
             align-items: center;
             gap: 8px;
         `;
 
+        // จุดสถานะ
         const indicator = document.createElement('span');
         indicator.id = 'script10-status';
         indicator.textContent = '●';
@@ -49,6 +45,7 @@
         `;
         btn.prepend(indicator);
 
+        // Hover effect
         btn.addEventListener('mouseenter', () => {
             btn.style.transform = 'scale(1.05)';
             btn.style.boxShadow = '0 12px 32px rgba(96, 165, 250, 0.6)';
@@ -60,374 +57,114 @@
 
         document.body.appendChild(btn);
 
+        // ผูก Event
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
-            if (IS_RENDER) {
-                openTTSWeb();
-            } else {
-                runMainPy();
-            }
+            runMainPy();
         });
+
+        // ตรวจสอบสถานะเซิร์ฟเวอร์ทันที
+        checkServerStatus();
+        // และตรวจสอบทุก 15 วินาที
+        setInterval(checkServerStatus, 15000);
 
         return btn;
     }
 
-    // ========== เปิด TTS Web ==========
-    function openTTSWeb() {
-        const existing = document.getElementById('tts-web-modal');
-        if (existing) {
-            existing.style.display = 'block';
-            return;
-        }
+    // ---- ตรวจสอบสถานะเซิร์ฟเวอร์ (ใช้ GET /status) ----
+    async function checkServerStatus() {
+        const indicator = document.getElementById('script10-status');
+        if (!indicator) return;
 
-        if (typeof SpeechSynthesisRecorder === 'undefined') {
-            const script = document.createElement('script');
-            script.src = 'https://unpkg.com/speech-synthesis-recorder@1.2.1/SpeechSynthesisRecorder.js';
-            script.onload = () => {
-                console.log('✅ SpeechSynthesisRecorder loaded');
-                createModal();
-            };
-            script.onerror = () => {
-                alert('❌ ไม่สามารถโหลด SpeechSynthesisRecorder ได้');
-            };
-            document.head.appendChild(script);
-        } else {
-            createModal();
-        }
-    }
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 2500); // timeout 2.5 วินาที
 
-    // ========== สร้าง Modal ==========
-    function createModal() {
-        const modal = document.createElement('div');
-        modal.id = 'tts-web-modal';
-        modal.style.cssText = `
-            position: fixed;
-            top: 50%;
-            left: 50%;
-            transform: translate(-50%, -50%);
-            z-index: 10001;
-            background: #1E293B;
-            padding: 30px;
-            border-radius: 16px;
-            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
-            max-width: 500px;
-            width: 90%;
-            color: white;
-            font-family: 'Inter', sans-serif;
-        `;
-        modal.innerHTML = `
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
-                <h2 style="margin:0; font-size:1.5rem;">🎙️ TTS Studio (Web)</h2>
-                <button id="close-tts-modal" style="background:none; border:none; color:#94A3B8; font-size:1.5rem; cursor:pointer;">✕</button>
-            </div>
-            <textarea id="tts-text-input" rows="4" style="width:100%; padding:12px; background:#0F172A; color:white; border:1px solid #334155; border-radius:8px; font-size:1rem; resize:vertical;">สวัสดีครับ ยินดีต้อนรับสู่ TTS Studio บนเว็บ</textarea>
-            <div style="margin:12px 0;">
-                <label>ความเร็ว: <span id="speed-label">1.0</span></label>
-                <input type="range" id="tts-speed" min="0.5" max="2" step="0.1" value="1.0" style="width:100%;">
-            </div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap;">
-                <button id="tts-speak-btn" style="flex:2; padding:12px; background:linear-gradient(135deg,#60A5FA,#A78BFA); border:none; border-radius:8px; color:white; font-size:1rem; font-weight:600; cursor:pointer;">🔊 พูด</button>
-                <button id="tts-download-btn" style="flex:1; padding:12px; background:linear-gradient(135deg,#4ADE80,#22D3EE); border:none; border-radius:8px; color:#0F172A; font-size:1rem; font-weight:600; cursor:pointer;">💾 MP3</button>
-            </div>
-            <div id="tts-status" style="margin-top:12px; padding:12px; background:#0F172A; border-radius:8px; border-left:4px solid #60A5FA; font-size:0.9rem;">✅ พร้อมใช้งาน</div>
-        `;
-        document.body.appendChild(modal);
-
-        document.getElementById('close-tts-modal').addEventListener('click', () => {
-            modal.style.display = 'none';
-        });
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) modal.style.display = 'none';
-        });
-
-        // ---- พูด ----
-        document.getElementById('tts-speak-btn').addEventListener('click', function() {
-            const text = document.getElementById('tts-text-input').value.trim();
-            const speed = parseFloat(document.getElementById('tts-speed').value);
-            const statusEl = document.getElementById('tts-status');
-
-            if (!text) {
-                statusEl.textContent = '⚠️ กรุณาพิมพ์ข้อความ';
-                statusEl.style.borderLeftColor = '#FACC15';
-                return;
-            }
-            if (!window.speechSynthesis) {
-                statusEl.textContent = '❌ เบราว์เซอร์ไม่รองรับ Speech Synthesis';
-                statusEl.style.borderLeftColor = '#F87171';
-                return;
-            }
-
-            window.speechSynthesis.cancel();
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'th-TH';
-            utterance.rate = speed;
-            utterance.pitch = 1;
-            utterance.volume = 1; // กำหนด volume ให้ชัดเจน
-
-            const voices = window.speechSynthesis.getVoices();
-            const thVoice = voices.find(v => v.lang.startsWith('th'));
-            if (thVoice) utterance.voice = thVoice;
-
-            utterance.onstart = () => {
-                statusEl.textContent = '⏳ กำลังพูด...';
-                statusEl.style.borderLeftColor = '#60A5FA';
-            };
-            utterance.onend = () => {
-                statusEl.textContent = '✅ พูดเสร็จเรียบร้อย';
-                statusEl.style.borderLeftColor = '#4ADE80';
-            };
-            utterance.onerror = (e) => {
-                statusEl.textContent = '❌ ข้อผิดพลาด: ' + e.error;
-                statusEl.style.borderLeftColor = '#F87171';
-            };
-            window.speechSynthesis.speak(utterance);
-        });
-
-        // ---- บันทึก MP3 (แก้ไขแล้ว) ----
-        document.getElementById('tts-download-btn').addEventListener('click', async function() {
-            const text = document.getElementById('tts-text-input').value.trim();
-            const speed = parseFloat(document.getElementById('tts-speed').value);
-            const statusEl = document.getElementById('tts-status');
-
-            if (!text) {
-                statusEl.textContent = '⚠️ กรุณาพิมพ์ข้อความ';
-                statusEl.style.borderLeftColor = '#FACC15';
-                return;
-            }
-
-            // ตรวจสอบ SpeechSynthesisRecorder
-            if (typeof SpeechSynthesisRecorder === 'undefined') {
-                statusEl.textContent = '❌ SpeechSynthesisRecorder ยังไม่พร้อม';
-                statusEl.style.borderLeftColor = '#F87171';
-                return;
-            }
-
-            statusEl.textContent = '⏳ กำลังสร้างไฟล์เสียง...';
-            statusEl.style.borderLeftColor = '#60A5FA';
-
-            try {
-                // ✅ แก้ไข: กำหนด utteranceOptions ให้ครบถ้วน รวม volume
-                const ttsRecorder = new SpeechSynthesisRecorder({
-                    text: text,
-                    utteranceOptions: {
-                        lang: 'th-TH',
-                        rate: speed,
-                        pitch: 1,
-                        volume: 1  // กำหนด volume ให้ชัดเจน
-                    }
-                });
-
-                const tts = await ttsRecorder.start();
-                const { data: blob } = await tts.blob();
-
-                // ตรวจสอบชนิดและแปลงเป็น MP3 (ถ้าเป็น WAV ให้เปลี่ยนนามสกุล)
-                let finalBlob = blob;
-                let ext = 'mp3';
-                if (blob.type === 'audio/wav' || blob.type === 'audio/x-wav') {
-                    // แปลงเป็น MP3 ไม่ได้ง่าย ๆ แต่เราเปลี่ยนชื่อไฟล์ให้ลงท้าย .mp3
-                    // เนื้อหาจริงเป็น WAV แต่เบราว์เซอร์ส่วนใหญ่เล่นได้
-                    ext = 'mp3';
-                } else {
-                    ext = blob.type.split('/')[1] || 'mp3';
-                }
-
-                const url = URL.createObjectURL(finalBlob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `tts_${Date.now()}.${ext}`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-
-                statusEl.textContent = '✅ บันทึกไฟล์สำเร็จ! (นามสกุล .' + ext + ')';
-                statusEl.style.borderLeftColor = '#4ADE80';
-            } catch (error) {
-                // ถ้า SpeechSynthesisRecorder ล้มเหลว ให้ใช้ MediaRecorder แบบ manual
-                console.warn('SpeechSynthesisRecorder error, try MediaRecorder fallback', error);
-                try {
-                    await recordWithMediaRecorder(text, speed, statusEl);
-                } catch (fallbackError) {
-                    statusEl.textContent = '❌ บันทึกไม่สำเร็จ: ' + fallbackError.message;
-                    statusEl.style.borderLeftColor = '#F87171';
-                }
-            }
-        });
-
-        // ---- อัปเดตความเร็ว ----
-        document.getElementById('tts-speed').addEventListener('input', function() {
-            document.getElementById('speed-label').textContent = parseFloat(this.value).toFixed(1);
-        });
-
-        // โหลดเสียง
-        if (window.speechSynthesis) {
-            window.speechSynthesis.getVoices();
-            window.speechSynthesis.onvoiceschanged = () => {
-                window.speechSynthesis.getVoices();
-            };
-        }
-    }
-
-    // ========== Fallback: MediaRecorder (จับเสียงจากระบบ) ==========
-    async function recordWithMediaRecorder(text, speed, statusEl) {
-        // ตรวจสอบว่า getUserMedia รองรับหรือไม่
-        if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-            throw new Error('เบราว์เซอร์ไม่รองรับ getUserMedia');
-        }
-
-        // ขออนุญาตจับเสียง (ต้องใช้ speaker หรือ audio output)
-        // หมายเหตุ: บางเบราว์เซอร์ต้องใช้ "audio" จากระบบ (ไม่ใช่ไมโครโฟน)
-        // วิธีนี้จะจับเสียงจากระบบ (loopback) ถ้าเบราว์เซอร์รองรับ
-        let stream;
         try {
-            stream = await navigator.mediaDevices.getUserMedia({
-                audio: {
-                    mandatory: {
-                        chromeMediaSource: 'desktop',
-                        chromeMediaSourceId: 'your_screen_id' // ต้องกำหนดให้ถูกต้อง
-                    }
-                }
+            const response = await fetch(`${SERVER_URL}/status`, {
+                method: 'GET',
+                signal: controller.signal
             });
-        } catch (e) {
-            // ถ้าไม่รองรับ loopback ให้ลองใช้ไมโครโฟน (ไม่ดี)
-            stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            clearTimeout(timeoutId);
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.main_running) {
+                    indicator.textContent = '●';
+                    indicator.style.color = '#4ADE80';  // เขียว = กำลังทำงาน
+                } else {
+                    indicator.textContent = '●';
+                    indicator.style.color = '#60A5FA';  // ฟ้า = พร้อม แต่ main ยังไม่เปิด
+                }
+            } else {
+                indicator.textContent = '○';
+                indicator.style.color = '#F87171';  // แดง = server error
+            }
+        } catch (error) {
+            clearTimeout(timeoutId);
+            indicator.textContent = '○';
+            indicator.style.color = '#F87171';  // แดง = ไม่เชื่อมต่อ
         }
-
-        return new Promise((resolve, reject) => {
-            const mediaRecorder = new MediaRecorder(stream, {
-                mimeType: 'audio/webm' // หรือ audio/mp3 ถ้ารองรับ
-            });
-            const chunks = [];
-
-            mediaRecorder.ondataavailable = (e) => {
-                if (e.data.size > 0) chunks.push(e.data);
-            };
-
-            mediaRecorder.onstop = () => {
-                const blob = new Blob(chunks, { type: 'audio/webm' });
-                const url = URL.createObjectURL(blob);
-                const a = document.createElement('a');
-                a.href = url;
-                a.download = `tts_${Date.now()}.webm`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                URL.revokeObjectURL(url);
-                stream.getTracks().forEach(track => track.stop());
-                resolve();
-            };
-
-            mediaRecorder.onerror = (err) => {
-                reject(err);
-            };
-
-            // เริ่มบันทึก
-            mediaRecorder.start();
-
-            // พูดข้อความ
-            const utterance = new SpeechSynthesisUtterance(text);
-            utterance.lang = 'th-TH';
-            utterance.rate = speed;
-            utterance.pitch = 1;
-            utterance.volume = 1;
-
-            const voices = window.speechSynthesis.getVoices();
-            const thVoice = voices.find(v => v.lang.startsWith('th'));
-            if (thVoice) utterance.voice = thVoice;
-
-            utterance.onend = () => {
-                // หยุดบันทึกหลังจากพูดจบ (รอให้เสียงจบ)
-                setTimeout(() => {
-                    mediaRecorder.stop();
-                }, 300);
-            };
-            utterance.onerror = (e) => {
-                mediaRecorder.stop();
-                reject(new Error('Speech error: ' + e.error));
-            };
-
-            window.speechSynthesis.speak(utterance);
-
-            // Fallback ถ้า utterance.onend ไม่ทำงาน
-            setTimeout(() => {
-                if (mediaRecorder.state === 'recording') {
-                    mediaRecorder.stop();
-                }
-            }, 10000); // หยุดหลังจาก 10 วินาที
-        });
     }
 
-    // ========== Local: run-main ==========
+    // ---- เรียก API เพื่อเปิด main.py ----
     async function runMainPy() {
         const btn = document.getElementById('script10-btn');
-        const original = btn.innerHTML;
+        const originalText = btn.innerHTML;
         btn.innerHTML = '⏳ กำลังเปิด...';
         btn.disabled = true;
         btn.style.opacity = '0.7';
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        const timeoutId = setTimeout(() => controller.abort(), 5000); // timeout 5 วินาที
 
         try {
-            const res = await fetch(`${SERVER_URL}/run-main`, { signal: controller.signal });
+            const response = await fetch(`${SERVER_URL}/run-main`, {
+                method: 'GET',
+                signal: controller.signal
+            });
             clearTimeout(timeoutId);
-            const data = await res.json();
 
-            if (res.ok) {
-                const color = data.status === 'success' ? '#4ADE80' : data.status === 'warning' ? '#FACC15' : '#F87171';
-                showToast((data.status === 'success' ? '✅ ' : '⚠️ ') + data.message, color);
+            const data = await response.json();
+
+            if (response.ok) {
+                if (data.status === 'success') {
+                    showToast('✅ ' + data.message, '#4ADE80');
+                } else if (data.status === 'warning') {
+                    showToast('⚠️ ' + data.message, '#FACC15');
+                } else {
+                    showToast('❌ ' + data.message, '#F87171');
+                }
             } else {
-                showToast('❌ ' + (data.message || 'Server error'), '#F87171');
+                showToast('❌ ' + (data.message || 'เกิดข้อผิดพลาด'), '#F87171');
             }
-        } catch (err) {
+        } catch (error) {
             clearTimeout(timeoutId);
-            if (err.name === 'AbortError') {
-                showToast('⏰ เซิร์ฟเวอร์ไม่ตอบกลับ (หมดเวลา) กรุณาเปิด server.exe', '#F87171');
+            if (error.name === 'AbortError') {
+                showToast('⏰ หมดเวลารอตอบกลับ (server อาจไม่ตอบ)', '#F87171');
             } else {
-                showToast('❌ ' + err.message, '#F87171');
+                showToast('❌ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ (' + SERVER_URL + ')', '#F87171');
             }
+            console.error('script10.js: fetch error', error);
         } finally {
-            btn.innerHTML = original;
+            btn.innerHTML = originalText;
             btn.disabled = false;
             btn.style.opacity = '1';
+            // อัปเดตสถานะอีกครั้ง
             checkServerStatus();
         }
     }
 
-    // ========== ตรวจสอบสถานะ ==========
-    async function checkServerStatus() {
-        const indicator = document.getElementById('script10-status');
-        if (!indicator) return;
-        const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
-        try {
-            const res = await fetch(`${SERVER_URL}/status`, { signal: controller.signal });
-            clearTimeout(timeoutId);
-            if (res.ok) {
-                const data = await res.json();
-                indicator.textContent = '●';
-                indicator.style.color = data.main_running ? '#4ADE80' : '#60A5FA';
-            } else {
-                indicator.textContent = '○';
-                indicator.style.color = '#F87171';
-            }
-        } catch {
-            clearTimeout(timeoutId);
-            indicator.textContent = '○';
-            indicator.style.color = '#F87171';
-        }
-    }
-
-    // ========== Toast ==========
-    function showToast(msg, color = '#4ADE80') {
+    // ---- Toast Notification ----
+    function showToast(message, color = '#4ADE80') {
         const old = document.getElementById('script10-toast');
         if (old) old.remove();
+
         const toast = document.createElement('div');
         toast.id = 'script10-toast';
-        toast.textContent = msg;
+        toast.textContent = message;
         toast.style.cssText = `
             position: fixed;
-            bottom: 160px;
+            bottom: 100px;
             right: 30px;
             z-index: 10000;
             padding: 14px 24px;
@@ -444,13 +181,14 @@
             transition: opacity 0.3s ease;
         `;
         document.body.appendChild(toast);
+
         setTimeout(() => {
             toast.style.opacity = '0';
             setTimeout(() => toast.remove(), 300);
-        }, 5000);
+        }, 4000);
     }
 
-    // ========== CSS ==========
+    // ---- Inject CSS animation ----
     function injectStyles() {
         if (document.getElementById('script10-styles')) return;
         const style = document.createElement('style');
@@ -464,13 +202,12 @@
         document.head.appendChild(style);
     }
 
-    // ========== เริ่มต้น ==========
+    // ---- เริ่มเมื่อ DOM พร้อม ----
     function init() {
         injectStyles();
         createFloatingButton();
-        checkServerStatus();
-        setInterval(checkServerStatus, CHECK_INTERVAL);
-        console.log('✅ script10.js loaded (Render:', IS_RENDER, ')');
+        console.log('✅ script10.js โหลดสำเร็จ (ปุ่มเปิด TTS Studio)');
+        console.log(`🔗 เชื่อมต่อที่ ${SERVER_URL}`);
     }
 
     if (document.readyState === 'loading') {
