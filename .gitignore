@@ -1,0 +1,103 @@
+# ==============================
+# Python
+# ==============================
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.pyz
+*.pyzw
+.Python
+*.so
+*.dylib
+*.dll
+*.egg
+*.egg-info/
+dist/
+build/
+*.spec
+
+# ==============================
+# Virtual Environment
+# ==============================
+env/
+venv/
+.venv/
+ENV/
+env.bak/
+venv.bak/
+
+# ==============================
+# IDE / Editor
+# ==============================
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+desktop.ini
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.user
+
+# ==============================
+# Logs & Temporary Files
+# ==============================
+*.log
+*.tmp
+*.temp
+logs/
+*.pid
+*.pid.lock
+
+# ==============================
+# Database (ถ้ามี)
+# ==============================
+*.db
+*.sqlite
+*.sqlite3
+
+# ==============================
+# Executable / Build Artifacts
+# ==============================
+*.exe
+*.msi
+*.dmg
+*.pkg
+*.deb
+*.rpm
+server.exe
+build_exe.bat
+run.bat
+
+# ==============================
+# Render (deploy)
+# ==============================
+.rendermeta/
+render.yaml
+
+# ==============================
+# Jupyter Notebook (ถ้ามี)
+# ==============================
+.ipynb_checkpoints/
+*.ipynb
+
+# ==============================
+# MacOS
+# ==============================
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# ==============================
+# ไฟล์อื่นๆ ที่ไม่ต้องการ
+# ==============================
+*.bak
+*.backup
+*.orig
+*.rej
+*.patch
