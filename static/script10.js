@@ -1,165 +1,302 @@
-import os
-import sys
-import subprocess
-import signal
-from flask import Flask, jsonify, send_from_directory, request
-from flask_cors import CORS
+// script10.js - ปุ่มเปิด TTS Studio (รองรับ Local + Render)
+(function() {
+    "use strict";
 
-# ===============================
-# Base Path
-# ===============================
-def get_base_path():
-    if getattr(sys, 'frozen', False):
-        return os.path.dirname(sys.executable)
-    return os.path.dirname(os.path.abspath(__file__))
+    const SERVER_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:5000'
+        : window.location.origin;
 
-BASE_DIR = get_base_path()
-STATIC_DIR = os.path.join(BASE_DIR, 'static')
-MAIN_PY_PATH = os.path.join(BASE_DIR, "main.py")
+    const TIMEOUT_MS = 5000;
+    const CHECK_INTERVAL = 15000;
+    const IS_RENDER = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
 
-# ===============================
-# Flask App
-# ===============================
-app = Flask(__name__, static_folder=STATIC_DIR, static_url_path='/static')
-CORS(app, resources={r"/*": {"origins": "*"}})
+    // ========== สร้างปุ่ม ==========
+    function createFloatingButton() {
+        if (document.getElementById('script10-btn')) return;
 
-current_pid = None
+        const btn = document.createElement('button');
+        btn.id = 'script10-btn';
+        btn.innerHTML = IS_RENDER ? '🎙️ TTS Studio (Web)' : '🚀 เปิด TTS Studio';
+        btn.style.cssText = `
+            position: fixed;
+            bottom: 100px;
+            right: 30px;
+            z-index: 9999;
+            padding: 14px 24px;
+            background: linear-gradient(135deg, #60A5FA, #A78BFA);
+            color: white;
+            border: none;
+            border-radius: 40px;
+            font-size: 1rem;
+            font-weight: 600;
+            box-shadow: 0 8px 24px rgba(96, 165, 250, 0.4);
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-family: 'Inter', sans-serif;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        `;
 
-# ===============================
-# Process Checker (for local)
-# ===============================
-def is_process_alive(pid):
-    try:
-        if sys.platform == "win32":
-            result = subprocess.run(
-                ['tasklist', '/FI', f'PID eq {pid}'],
-                capture_output=True,
-                text=True
-            )
-            return str(pid) in result.stdout
-        else:
-            os.kill(pid, 0)
-            return True
-    except:
-        return False
+        const indicator = document.createElement('span');
+        indicator.id = 'script10-status';
+        indicator.textContent = '●';
+        indicator.style.cssText = `
+            font-size: 0.8rem;
+            margin-right: 4px;
+            color: #facc15;
+            transition: color 0.3s ease;
+        `;
+        btn.prepend(indicator);
 
-# ===============================
-# Static Web Routes
-# ===============================
-@app.route('/')
-def index():
-    return send_from_directory(STATIC_DIR, 'index.html')
+        btn.addEventListener('mouseenter', () => {
+            btn.style.transform = 'scale(1.05)';
+            btn.style.boxShadow = '0 12px 32px rgba(96, 165, 250, 0.6)';
+        });
+        btn.addEventListener('mouseleave', () => {
+            btn.style.transform = 'scale(1)';
+            btn.style.boxShadow = '0 8px 24px rgba(96, 165, 250, 0.4)';
+        });
 
-@app.route('/<path:filename>')
-def static_files(filename):
-    # อนุญาตเฉพาะนามสกุลที่ปลอดภัย
-    allowed_ext = ('.html', '.css', '.js', '.png', '.jpg', '.jpeg', '.gif', '.svg', '.mp3', '.wav')
-    if not filename.lower().endswith(allowed_ext):
-        return jsonify({'error': 'forbidden'}), 403
-    return send_from_directory(STATIC_DIR, filename)
+        document.body.appendChild(btn);
 
-# ===============================
-# API Routes
-# ===============================
-@app.route('/status')
-def status():
-    return jsonify({
-        "status": "running",
-        "main_running": current_pid is not None and is_process_alive(current_pid)
-    })
+        btn.addEventListener('click', function(e) {
+            e.stopPropagation();
+            if (IS_RENDER) {
+                openTTSWeb();
+            } else {
+                runMainPy();
+            }
+        });
 
-@app.route('/run-main')
-def run_main():
-    global current_pid
+        return btn;
+    }
 
-    # ถ้าอยู่บน Render ให้ตอบกลับว่าทำไม่ได้
-    if os.getenv('RENDER'):
-        return jsonify({
-            "status": "error",
-            "message": "ไม่สามารถเปิด main.py บน Render (ไม่มี GUI)",
-            "hint": "กรุณาดาวน์โหลดโปรเจกต์และรันบนเครื่องของคุณ"
-        }), 501
+    // ========== TTS Web (Render) ==========
+    function openTTSWeb() {
+        // ถ้ามี Modal อยู่แล้ว ให้แสดง
+        const existing = document.getElementById('tts-web-modal');
+        if (existing) {
+            existing.style.display = 'block';
+            return;
+        }
 
-    if not os.path.exists(MAIN_PY_PATH):
-        return jsonify({"status": "error", "message": "main.py not found"}), 404
+        const modal = document.createElement('div');
+        modal.id = 'tts-web-modal';
+        modal.style.cssText = `
+            position: fixed;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            z-index: 10001;
+            background: #1E293B;
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.8);
+            max-width: 500px;
+            width: 90%;
+            color: white;
+            font-family: 'Inter', sans-serif;
+        `;
+        modal.innerHTML = `
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h2 style="margin:0; font-size:1.5rem;">🎙️ TTS Studio (Web)</h2>
+                <button id="close-tts-modal" style="background:none; border:none; color:#94A3B8; font-size:1.5rem; cursor:pointer;">✕</button>
+            </div>
+            <textarea id="tts-text-input" rows="4" style="width:100%; padding:12px; background:#0F172A; color:white; border:1px solid #334155; border-radius:8px; font-size:1rem; resize:vertical;">สวัสดีครับ ยินดีต้อนรับสู่ TTS Studio บนเว็บ</textarea>
+            <div style="margin:12px 0;">
+                <label>ความเร็ว: <span id="speed-label">1.0</span></label>
+                <input type="range" id="tts-speed" min="0.5" max="2" step="0.1" value="1.0" style="width:100%;">
+            </div>
+            <button id="tts-speak-btn" style="width:100%; padding:12px; background:linear-gradient(135deg,#60A5FA,#A78BFA); border:none; border-radius:8px; color:white; font-size:1rem; font-weight:600; cursor:pointer;">🔊 พูด</button>
+            <div id="tts-status" style="margin-top:12px; padding:12px; background:#0F172A; border-radius:8px; border-left:4px solid #60A5FA; font-size:0.9rem;">✅ พร้อมใช้งาน</div>
+        `;
+        document.body.appendChild(modal);
 
-    if current_pid and is_process_alive(current_pid):
-        return jsonify({"status": "warning", "message": "already running"})
+        document.getElementById('close-tts-modal').addEventListener('click', () => {
+            modal.style.display = 'none';
+        });
 
-    try:
-        if sys.platform == "win32":
-            proc = subprocess.Popen(
-                [sys.executable, MAIN_PY_PATH],
-                creationflags=subprocess.CREATE_NO_WINDOW,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL
-            )
-        else:
-            proc = subprocess.Popen(
-                [sys.executable, MAIN_PY_PATH],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-                start_new_session=True
-            )
-        current_pid = proc.pid
-        return jsonify({"status": "success", "pid": proc.pid})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        // ปิดเมื่อคลิกด้านนอก (optional)
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) modal.style.display = 'none';
+        });
 
-@app.route('/kill-main')
-def kill_main():
-    global current_pid
-    if not current_pid:
-        return jsonify({"status": "warning", "message": "not running"})
-    try:
-        if sys.platform == "win32":
-            subprocess.run(['taskkill', '/F', '/PID', str(current_pid)])
-        else:
-            os.kill(current_pid, signal.SIGTERM)
-        current_pid = None
-        return jsonify({"status": "success"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+        // ปุ่มพูด
+        document.getElementById('tts-speak-btn').addEventListener('click', function() {
+            const text = document.getElementById('tts-text-input').value.trim();
+            const speed = parseFloat(document.getElementById('tts-speed').value);
+            const statusEl = document.getElementById('tts-status');
 
-# (Optional) TTS API using pyttsx3 (for local use)
-@app.route('/api/tts/generate', methods=['POST'])
-def tts_generate():
-    # ใช้ได้เฉพาะ local (Render ไม่มีเสียง)
-    if os.getenv('RENDER'):
-        return jsonify({"status": "error", "message": "TTS not available on Render"}), 501
-    try:
-        data = request.json
-        text = data.get('text', '')
-        speed = int(data.get('speed', 150))
-        if not text:
-            return jsonify({"status": "error", "message": "no text"}), 400
-        import pyttsx3
-        engine = pyttsx3.init()
-        engine.setProperty('rate', speed)
-        engine.say(text)
-        engine.runAndWait()
-        engine.stop()
-        return jsonify({"status": "success", "message": "spoken"})
-    except Exception as e:
-        return jsonify({"status": "error", "message": str(e)}), 500
+            if (!text) {
+                statusEl.textContent = '⚠️ กรุณาพิมพ์ข้อความ';
+                statusEl.style.borderLeftColor = '#FACC15';
+                return;
+            }
+            if (!window.speechSynthesis) {
+                statusEl.textContent = '❌ เบราว์เซอร์ไม่รองรับ Speech Synthesis';
+                statusEl.style.borderLeftColor = '#F87171';
+                return;
+            }
 
-# ===============================
-# Error Handlers
-# ===============================
-@app.errorhandler(404)
-def not_found(e):
-    return jsonify({"error": "Not found"}), 404
+            window.speechSynthesis.cancel();
+            const utterance = new SpeechSynthesisUtterance(text);
+            utterance.lang = 'th-TH';
+            utterance.rate = speed;
+            utterance.pitch = 1;
 
-# ===============================
-# Main entry point
-# ===============================
-if __name__ == '__main__':
-    port = int(os.getenv('PORT', 5000))
-    debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
-    print("=" * 50)
-    print("🚀 PixelForge Server")
-    print(f"📂 Base: {BASE_DIR}")
-    print(f"📂 Static: {STATIC_DIR}")
-    print(f"🌐 http://localhost:{port}")
-    print("=" * 50)
-    app.run(host='0.0.0.0', port=port, debug=debug)
+            const voices = window.speechSynthesis.getVoices();
+            const thVoice = voices.find(v => v.lang.startsWith('th'));
+            if (thVoice) utterance.voice = thVoice;
+
+            utterance.onstart = () => {
+                statusEl.textContent = '⏳ กำลังพูด...';
+                statusEl.style.borderLeftColor = '#60A5FA';
+            };
+            utterance.onend = () => {
+                statusEl.textContent = '✅ พูดเสร็จเรียบร้อย';
+                statusEl.style.borderLeftColor = '#4ADE80';
+            };
+            utterance.onerror = (e) => {
+                statusEl.textContent = '❌ ข้อผิดพลาด: ' + e.error;
+                statusEl.style.borderLeftColor = '#F87171';
+            };
+            window.speechSynthesis.speak(utterance);
+        });
+
+        // อัปเดตความเร็ว
+        document.getElementById('tts-speed').addEventListener('input', function() {
+            document.getElementById('speed-label').textContent = parseFloat(this.value).toFixed(1);
+        });
+
+        // โหลดเสียงล่วงหน้า
+        if (window.speechSynthesis) {
+            window.speechSynthesis.getVoices();
+            window.speechSynthesis.onvoiceschanged = () => {
+                window.speechSynthesis.getVoices();
+            };
+        }
+    }
+
+    // ========== เรียก /run-main (Local) ==========
+    async function runMainPy() {
+        const btn = document.getElementById('script10-btn');
+        const original = btn.innerHTML;
+        btn.innerHTML = '⏳ กำลังเปิด...';
+        btn.disabled = true;
+        btn.style.opacity = '0.7';
+
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+
+        try {
+            const res = await fetch(`${SERVER_URL}/run-main`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            const data = await res.json();
+
+            if (res.ok) {
+                const color = data.status === 'success' ? '#4ADE80' : data.status === 'warning' ? '#FACC15' : '#F87171';
+                showToast((data.status === 'success' ? '✅ ' : '⚠️ ') + data.message, color);
+            } else {
+                showToast('❌ ' + (data.message || 'Server error'), '#F87171');
+            }
+        } catch (err) {
+            clearTimeout(timeoutId);
+            if (err.name === 'AbortError') {
+                showToast('⏰ เซิร์ฟเวอร์ไม่ตอบกลับ (หมดเวลา) กรุณาเปิด server.exe', '#F87171');
+            } else {
+                showToast('❌ ' + err.message, '#F87171');
+            }
+        } finally {
+            btn.innerHTML = original;
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            checkServerStatus();
+        }
+    }
+
+    // ========== ตรวจสอบสถานะ ==========
+    async function checkServerStatus() {
+        const indicator = document.getElementById('script10-status');
+        if (!indicator) return;
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
+        try {
+            const res = await fetch(`${SERVER_URL}/status`, { signal: controller.signal });
+            clearTimeout(timeoutId);
+            if (res.ok) {
+                const data = await res.json();
+                indicator.textContent = '●';
+                indicator.style.color = data.main_running ? '#4ADE80' : '#60A5FA';
+            } else {
+                indicator.textContent = '○';
+                indicator.style.color = '#F87171';
+            }
+        } catch {
+            clearTimeout(timeoutId);
+            indicator.textContent = '○';
+            indicator.style.color = '#F87171';
+        }
+    }
+
+    // ========== Toast ==========
+    function showToast(msg, color = '#4ADE80') {
+        const old = document.getElementById('script10-toast');
+        if (old) old.remove();
+        const toast = document.createElement('div');
+        toast.id = 'script10-toast';
+        toast.textContent = msg;
+        toast.style.cssText = `
+            position: fixed;
+            bottom: 160px;
+            right: 30px;
+            z-index: 10000;
+            padding: 14px 24px;
+            background: #1E293B;
+            color: white;
+            border-left: 6px solid ${color};
+            border-radius: 12px;
+            box-shadow: 0 8px 32px rgba(0,0,0,0.6);
+            font-family: 'Inter', sans-serif;
+            font-size: 0.95rem;
+            font-weight: 500;
+            max-width: 350px;
+            animation: slideIn 0.3s ease;
+            transition: opacity 0.3s ease;
+        `;
+        document.body.appendChild(toast);
+        setTimeout(() => {
+            toast.style.opacity = '0';
+            setTimeout(() => toast.remove(), 300);
+        }, 5000);
+    }
+
+    // ========== CSS animation ==========
+    function injectStyles() {
+        if (document.getElementById('script10-styles')) return;
+        const style = document.createElement('style');
+        style.id = 'script10-styles';
+        style.textContent = `
+            @keyframes slideIn {
+                from { transform: translateX(100px); opacity: 0; }
+                to { transform: translateX(0); opacity: 1; }
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    // ========== เริ่มต้น ==========
+    function init() {
+        injectStyles();
+        createFloatingButton();
+        checkServerStatus();
+        setInterval(checkServerStatus, CHECK_INTERVAL);
+        console.log('✅ script10.js loaded (Render:', IS_RENDER, ')');
+    }
+
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', init);
+    } else {
+        init();
+    }
+})();
