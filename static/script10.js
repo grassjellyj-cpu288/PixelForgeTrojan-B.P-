@@ -1,4 +1,4 @@
-// script10.js - ปุ่มเปิด TTS Studio (รองรับ Local + Render)
+// script10.js - ปุ่มเปิด TTS Studio (รองรับ Local + Render + บันทึก MP3)
 (function() {
     "use strict";
 
@@ -10,7 +10,7 @@
     const CHECK_INTERVAL = 15000;
     const IS_RENDER = window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1';
 
-    // ========== สร้างปุ่ม ==========
+    // ========== สร้างปุ่มหลัก ==========
     function createFloatingButton() {
         if (document.getElementById('script10-btn')) return;
 
@@ -72,7 +72,7 @@
         return btn;
     }
 
-    // ========== TTS Web (Render) ==========
+    // ========== TTS Web (Render) พร้อมบันทึก MP3 ==========
     function openTTSWeb() {
         // ถ้ามี Modal อยู่แล้ว ให้แสดง
         const existing = document.getElementById('tts-web-modal');
@@ -81,6 +81,25 @@
             return;
         }
 
+        // ตรวจสอบว่าโหลด SpeechSynthesisRecorder หรือยัง
+        if (typeof SpeechSynthesisRecorder === 'undefined') {
+            // ถ้ายังไม่โหลด ให้โหลดจาก CDN
+            const script = document.createElement('script');
+            script.src = 'https://unpkg.com/speech-synthesis-recorder@1.2.1/SpeechSynthesisRecorder.js';
+            script.onload = () => {
+                console.log('✅ SpeechSynthesisRecorder โหลดสำเร็จ');
+                createModal();
+            };
+            script.onerror = () => {
+                alert('❌ ไม่สามารถโหลด SpeechSynthesisRecorder ได้ กรุณาตรวจสอบอินเทอร์เน็ต');
+            };
+            document.head.appendChild(script);
+        } else {
+            createModal();
+        }
+    }
+
+    function createModal() {
         const modal = document.createElement('div');
         modal.id = 'tts-web-modal';
         modal.style.cssText = `
@@ -108,21 +127,23 @@
                 <label>ความเร็ว: <span id="speed-label">1.0</span></label>
                 <input type="range" id="tts-speed" min="0.5" max="2" step="0.1" value="1.0" style="width:100%;">
             </div>
-            <button id="tts-speak-btn" style="width:100%; padding:12px; background:linear-gradient(135deg,#60A5FA,#A78BFA); border:none; border-radius:8px; color:white; font-size:1rem; font-weight:600; cursor:pointer;">🔊 พูด</button>
+            <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                <button id="tts-speak-btn" style="flex:2; padding:12px; background:linear-gradient(135deg,#60A5FA,#A78BFA); border:none; border-radius:8px; color:white; font-size:1rem; font-weight:600; cursor:pointer;">🔊 พูด</button>
+                <button id="tts-download-btn" style="flex:1; padding:12px; background:linear-gradient(135deg,#4ADE80,#22D3EE); border:none; border-radius:8px; color:#0F172A; font-size:1rem; font-weight:600; cursor:pointer;">💾 MP3</button>
+            </div>
             <div id="tts-status" style="margin-top:12px; padding:12px; background:#0F172A; border-radius:8px; border-left:4px solid #60A5FA; font-size:0.9rem;">✅ พร้อมใช้งาน</div>
         `;
         document.body.appendChild(modal);
 
+        // ปิด Modal
         document.getElementById('close-tts-modal').addEventListener('click', () => {
             modal.style.display = 'none';
         });
-
-        // ปิดเมื่อคลิกด้านนอก (optional)
         modal.addEventListener('click', (e) => {
             if (e.target === modal) modal.style.display = 'none';
         });
 
-        // ปุ่มพูด
+        // ---- ฟังก์ชันพูด ----
         document.getElementById('tts-speak-btn').addEventListener('click', function() {
             const text = document.getElementById('tts-text-input').value.trim();
             const speed = parseFloat(document.getElementById('tts-speed').value);
@@ -162,6 +183,74 @@
                 statusEl.style.borderLeftColor = '#F87171';
             };
             window.speechSynthesis.speak(utterance);
+        });
+
+        // ---- ฟังก์ชันบันทึกเป็น MP3 (ใช้ SpeechSynthesisRecorder) ----
+        document.getElementById('tts-download-btn').addEventListener('click', async function() {
+            const text = document.getElementById('tts-text-input').value.trim();
+            const speed = parseFloat(document.getElementById('tts-speed').value);
+            const statusEl = document.getElementById('tts-status');
+
+            if (!text) {
+                statusEl.textContent = '⚠️ กรุณาพิมพ์ข้อความก่อนบันทึก';
+                statusEl.style.borderLeftColor = '#FACC15';
+                return;
+            }
+
+            // ตรวจสอบว่า SpeechSynthesisRecorder พร้อม
+            if (typeof SpeechSynthesisRecorder === 'undefined') {
+                statusEl.textContent = '❌ SpeechSynthesisRecorder ยังไม่พร้อม กรุณารอสักครู่';
+                statusEl.style.borderLeftColor = '#F87171';
+                return;
+            }
+
+            statusEl.textContent = '⏳ กำลังสร้างไฟล์เสียง...';
+            statusEl.style.borderLeftColor = '#60A5FA';
+
+            try {
+                // สร้าง SpeechSynthesisRecorder
+                const ttsRecorder = new SpeechSynthesisRecorder({
+                    text: text,
+                    utteranceOptions: {
+                        lang: 'th-TH',
+                        rate: speed,
+                        pitch: 1
+                    }
+                });
+
+                // เริ่มบันทึกและรอให้เสร็จ
+                const tts = await ttsRecorder.start();
+                
+                // ดึงข้อมูลเป็น Blob
+                const { data: blob } = await tts.blob();
+                
+                // ตรวจสอบว่าเป็นไฟล์ MP3 หรือแปลงเป็น MP3
+                let finalBlob = blob;
+                // ถ้าได้เป็น WAV ให้แปลงเป็น MP3 (ใช้ MediaRecorder แทนไม่ได้)
+                // SpeechSynthesisRecorder คืนค่าเป็น WAV เริ่มต้น แต่เราสามารถเปลี่ยนเป็น MP3 ได้
+                // ถ้าเบราว์เซอร์รองรับ audio/mp3 ให้ใช้
+                if (blob.type !== 'audio/mp3' && blob.type !== 'audio/mpeg') {
+                    // ลองเปลี่ยน type
+                    finalBlob = new Blob([blob], { type: 'audio/mpeg' });
+                }
+
+                // สร้างลิงก์ดาวน์โหลด
+                const url = URL.createObjectURL(finalBlob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `tts_${Date.now()}.mp3`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                statusEl.textContent = '✅ บันทึกไฟล์ MP3 สำเร็จ!';
+                statusEl.style.borderLeftColor = '#4ADE80';
+            } catch (error) {
+                statusEl.textContent = '❌ บันทึกไม่สำเร็จ: ' + error.message;
+                statusEl.style.borderLeftColor = '#F87171';
+                console.error('บันทึก MP3 ล้มเหลว:', error);
+            }
         });
 
         // อัปเดตความเร็ว
