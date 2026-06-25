@@ -2,7 +2,7 @@ import os
 import sys
 import subprocess
 import signal
-from flask import Flask, jsonify, send_from_directory
+from flask import Flask, jsonify, send_from_directory, request
 from flask_cors import CORS
 
 # ===============================
@@ -17,12 +17,6 @@ BASE_DIR = get_base_path()
 STATIC_DIR = os.path.join(BASE_DIR, 'static')
 MAIN_PY_PATH = os.path.join(BASE_DIR, "main.py")
 
-# ตรวจสอบ main.py (ถ้ามี)
-if not os.path.exists(MAIN_PY_PATH):
-    print(f"⚠️ ไม่พบ main.py ในโฟลเดอร์: {BASE_DIR}")
-else:
-    print(f"✅ พบ main.py ที่ {MAIN_PY_PATH}")
-
 # ===============================
 # Flask App
 # ===============================
@@ -32,7 +26,7 @@ CORS(app, resources={r"/*": {"origins": "*"}})
 current_pid = None
 
 # ===============================
-# Process Checker (สำหรับ local)
+# Process Checker (สำหรับ Local)
 # ===============================
 def is_process_alive(pid):
     try:
@@ -50,13 +44,12 @@ def is_process_alive(pid):
         return False
 
 # ===============================
-# Static Web (ใช้ static folder)
+# Static Web Routes
 # ===============================
 @app.route('/')
 def index():
     return send_from_directory(STATIC_DIR, 'index.html')
 
-# เส้นทางสำหรับไฟล์ static อื่นๆ (ไม่ซ้ำกับ /static)
 @app.route('/<path:filename>')
 def static_files(filename):
     # อนุญาตเฉพาะนามสกุลที่ปลอดภัย
@@ -66,7 +59,7 @@ def static_files(filename):
     return send_from_directory(STATIC_DIR, filename)
 
 # ===============================
-# API
+# API Routes
 # ===============================
 @app.route('/status')
 def status():
@@ -79,11 +72,12 @@ def status():
 def run_main():
     global current_pid
 
-    # ถ้าอยู่บน Render (ไม่มี GUI) ให้ตอบกลับว่าไม่สามารถเปิดได้
+    # ถ้าอยู่บน Render ให้ตอบกลับว่าทำไม่ได้
     if os.getenv('RENDER'):
         return jsonify({
             "status": "error",
-            "message": "ไม่สามารถเปิด main.py บน Render (ไม่มี GUI)"
+            "message": "ไม่สามารถเปิด main.py บน Render (ไม่มี GUI)",
+            "hint": "กรุณาดาวน์โหลดโปรเจกต์และรันบนเครื่องของคุณ"
         }), 501
 
     if not os.path.exists(MAIN_PY_PATH):
@@ -128,6 +122,42 @@ def kill_main():
         return jsonify({"status": "error", "message": str(e)}), 500
 
 # ===============================
+# TTS API (ใช้ pyttsx3 – เฉพาะ Local)
+# ===============================
+@app.route('/api/tts/generate', methods=['POST'])
+def tts_generate():
+    if os.getenv('RENDER'):
+        return jsonify({"status": "error", "message": "TTS not available on Render"}), 501
+
+    try:
+        data = request.get_json()
+        if not data:
+            return jsonify({"status": "error", "message": "Missing JSON body"}), 400
+
+        text = data.get('text', '').strip()
+        speed = int(data.get('speed', 150))
+
+        if not text:
+            return jsonify({"status": "error", "message": "No text provided"}), 400
+
+        import pyttsx3
+        engine = pyttsx3.init()
+        engine.setProperty('rate', speed)
+        engine.say(text)
+        engine.runAndWait()
+        engine.stop()
+
+        return jsonify({
+            "status": "success",
+            "message": "Speech generated successfully"
+        })
+
+    except ImportError:
+        return jsonify({"status": "error", "message": "pyttsx3 not installed"}), 500
+    except Exception as e:
+        return jsonify({"status": "error", "message": str(e)}), 500
+
+# ===============================
 # 404 Handler
 # ===============================
 @app.errorhandler(404)
@@ -135,13 +165,13 @@ def not_found(e):
     return jsonify({"error": "Not found"}), 404
 
 # ===============================
-# MAIN (ใช้สำหรับ local development)
+# Main Entry Point
 # ===============================
 if __name__ == '__main__':
     port = int(os.getenv('PORT', 5000))
     debug = os.getenv('FLASK_DEBUG', 'False').lower() == 'true'
     print("=" * 50)
-    print("🚀 Server starting (Local Development)")
+    print("🚀 PixelForge Server")
     print(f"📂 Base: {BASE_DIR}")
     print(f"📂 Static: {STATIC_DIR}")
     print(f"🌐 http://localhost:{port}")
