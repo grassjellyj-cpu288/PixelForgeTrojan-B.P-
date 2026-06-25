@@ -1,0 +1,210 @@
+# tts_frame.py
+import asyncio
+import threading
+import os
+import queue
+import customtkinter as ctk
+import edge_tts
+import pygame
+from pydub import AudioSegment
+from resource_gauge import ResourceGauge
+
+class TTSFrame(ctk.CTkFrame):
+    def __init__(self, master, **kwargs):
+        super().__init__(master, **kwargs)
+
+        self.task_queue = queue.Queue()
+        self.is_processing = False
+        self.cancel_flag = False
+        self.final_audio_path = "output.mp3"
+
+        self.language_voices = {
+            "ไทย": ["th-TH-PremwadeeNeural", "th-TH-AcharaNeural"],
+            "อังกฤษ": ["en-US-JennyNeural", "en-US-GuyNeural", "en-GB-SoniaNeural", "en-AU-NatashaNeural"],
+            "จีน": ["zh-CN-XiaoxiaoNeural", "zh-CN-YunxiNeural", "zh-TW-HsiaoChenNeural"],
+            "ญี่ปุ่น": ["ja-JP-NanamiNeural", "ja-JP-KeitaNeural"],
+            "เกาหลี": ["ko-KR-SunHiNeural", "ko-KR-InJoonNeural"],
+            "ฝรั่งเศส": ["fr-FR-DeniseNeural", "fr-FR-HenriNeural"],
+            "เยอรมัน": ["de-DE-KatjaNeural", "de-DE-ConradNeural"],
+            "สเปน": ["es-ES-ElviraNeural", "es-ES-AlvaroNeural"]
+        }
+        self.voice_map = {}
+
+        try:
+            pygame.mixer.init()
+        except:
+            pass
+
+        self.build_ui()
+
+    def build_ui(self):
+        self.textbox = ctk.CTkTextbox(self, height=200)
+        self.textbox.pack(fill="both", padx=20, pady=10, expand=True)
+
+        control = ctk.CTkFrame(self)
+        control.pack(fill="x", padx=20, pady=10)
+        control.grid_columnconfigure(0, weight=1)
+        control.grid_columnconfigure(1, weight=1)
+
+        # เลือกภาษา
+        lang_frame = ctk.CTkFrame(control, fg_color="transparent")
+        lang_frame.grid(row=0, column=0, columnspan=2, sticky="ew", pady=5)
+        ctk.CTkLabel(lang_frame, text="🌐 ภาษา:").pack(side="left", padx=5)
+        self.lang_combo = ctk.CTkComboBox(
+            lang_frame,
+            values=list(self.language_voices.keys()),
+            command=self.on_language_change,
+            state="readonly"
+        )
+        self.lang_combo.set("ไทย")
+        self.lang_combo.pack(side="left", padx=5)
+
+        # เลือกเสียง
+        voice_frame = ctk.CTkFrame(control, fg_color="transparent")
+        voice_frame.grid(row=1, column=0, columnspan=2, sticky="ew", pady=5)
+        ctk.CTkLabel(voice_frame, text="🗣️ เสียง:").pack(side="left", padx=5)
+        self.voice_combo = ctk.CTkComboBox(voice_frame, values=[], state="readonly")
+        self.voice_combo.pack(side="left", padx=5, fill="x", expand=True)
+        self.on_language_change("ไทย")
+
+        # ความเร็ว
+        self.speed_label = ctk.CTkLabel(control, text="⏩ ความเร็ว: 0%")
+        self.speed_label.grid(row=2, column=0, columnspan=2, pady=(10,0))
+        self.speed = ctk.CTkSlider(control, from_=-50, to=50, command=self.update_speed)
+        self.speed.set(0)
+        self.speed.grid(row=3, column=0, columnspan=2, sticky="ew", padx=10)
+
+        # ปุ่ม Start / Cancel
+        self.start_btn = ctk.CTkButton(control, text="▶ เริ่มสร้าง", command=self.start_task)
+        self.start_btn.grid(row=4, column=0, pady=10, padx=5, sticky="ew")
+        self.cancel_btn = ctk.CTkButton(control, text="⏹ ยกเลิก", command=self.cancel_task)
+        self.cancel_btn.grid(row=4, column=1, pady=10, padx=5, sticky="ew")
+
+        # ปุ่มเล่น/หยุด
+        self.play_btn = ctk.CTkButton(control, text="🔊 เล่นเสียง", command=self.play_audio, state="disabled")
+        self.play_btn.grid(row=5, column=0, pady=5, padx=5, sticky="ew")
+        self.stop_btn = ctk.CTkButton(control, text="⏹ หยุดเล่น", command=self.stop_audio, state="disabled")
+        self.stop_btn.grid(row=5, column=1, pady=5, padx=5, sticky="ew")
+
+        self.resource = ResourceGauge(self, "Premium TTS Studio V2", 100)
+        self.resource.pack(fill="x", padx=20, pady=10)
+
+        self.status = ctk.CTkLabel(self, text="🟢 พร้อมทำงาน", text_color="gray")
+        self.status.pack(pady=10)
+
+    def on_language_change(self, lang):
+        voices = self.language_voices.get(lang, ["th-TH-PremwadeeNeural"])
+        display_names = [v.split('-')[-1].replace('Neural', '') for v in voices]
+        self.voice_combo.configure(values=display_names)
+        self.voice_combo.set(display_names[0] if display_names else "")
+        self.voice_map = dict(zip(display_names, voices))
+
+    def ui(self, fn):
+        self.after(0, fn)
+
+    def set_status(self, text):
+        self.ui(lambda: self.status.configure(text=text))
+
+    def set_resource(self, v):
+        self.ui(lambda: self.resource.set(v))
+
+    def update_speed(self, v):
+        self.ui(lambda: self.speed_label.configure(text=f"⏩ ความเร็ว: {int(v)}%"))
+
+    def play_audio(self):
+        if not os.path.exists(self.final_audio_path):
+            self.set_status("❌ ไม่พบไฟล์เสียง")
+            return
+        try:
+            pygame.mixer.music.load(self.final_audio_path)
+            pygame.mixer.music.play()
+            self.set_status("🔊 กำลังเล่น...")
+        except Exception as e:
+            self.set_status(f"❌ เล่นไม่ได้: {e}")
+
+    def stop_audio(self):
+        try:
+            pygame.mixer.music.stop()
+            self.set_status("⏹ หยุดเล่น")
+        except:
+            pass
+
+    def start_task(self):
+        text = self.textbox.get("0.0", "end-1c").strip()
+        if not text:
+            self.set_status("⚠️ ไม่มีข้อความ")
+            return
+        if self.is_processing:
+            self.set_status("⏳ กำลังประมวลผล...")
+            return
+
+        self.ui(lambda: self.play_btn.configure(state="disabled"))
+        self.ui(lambda: self.stop_btn.configure(state="disabled"))
+
+        self.task_queue.put(text)
+        threading.Thread(target=self.worker, daemon=True).start()
+
+    def cancel_task(self):
+        self.cancel_flag = True
+        self.set_status("⏹ กำลังยกเลิก...")
+
+    def worker(self):
+        self.is_processing = True
+        self.cancel_flag = False
+
+        while not self.task_queue.empty():
+            if self.cancel_flag:
+                break
+
+            text = self.task_queue.get()
+            try:
+                text = text.strip()
+                if not text:
+                    raise ValueError("ข้อความว่าง")
+
+                self.set_status("⏳ กำลังสร้างเสียง...")
+                self.set_resource(10)
+
+                self.run_async(self.tts_process(text))
+
+                self.set_resource(100)
+                self.set_status("✅ สร้างเสียงสำเร็จ!")
+                self.ui(lambda: self.play_btn.configure(state="normal"))
+                self.ui(lambda: self.stop_btn.configure(state="normal"))
+
+            except Exception as e:
+                self.set_status(f"❌ ข้อผิดพลาด: {e}")
+
+        self.is_processing = False
+        self.resource.reset()
+
+    def run_async(self, coro):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
+        loop.run_until_complete(coro)
+        loop.close()
+
+    async def tts_process(self, text):
+        voice_display = self.voice_combo.get()
+        voice_code = self.voice_map.get(voice_display, "th-TH-PremwadeeNeural")
+        speed_val = int(self.speed.get())
+        rate = f"+{speed_val}%" if speed_val >= 0 else f"{speed_val}%"
+
+        temp_file = "temp.mp3"
+        self.set_resource(30)
+
+        communicate = edge_tts.Communicate(text, voice_code, rate=rate)
+        await communicate.save(temp_file)
+
+        if not os.path.exists(temp_file):
+            raise RuntimeError("ไม่สามารถสร้างไฟล์เสียงได้")
+
+        self.set_resource(70)
+
+        audio = AudioSegment.from_mp3(temp_file)
+        audio.export(self.final_audio_path, format="mp3")
+
+        os.remove(temp_file)
+
+        self.set_resource(90)
+        self.set_status("✅ เสียงพร้อมใช้งาน")

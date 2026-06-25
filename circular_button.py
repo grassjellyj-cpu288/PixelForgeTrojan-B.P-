@@ -1,0 +1,116 @@
+# circular_button.py
+import customtkinter as ctk
+
+class CircularAnimatedButton(ctk.CTkFrame):
+    """
+    ปุ่มวงกลมพร้อม Animation ขยาย/หดแบบนุ่มนวล
+    ใช้ CTkFrame เป็น Container เพื่อไม่ให้ Layout โดยรอบกระตุก
+    """
+    def __init__(
+        self,
+        master,
+        size=70,
+        text="",
+        command=None,
+        fg_color="#1f6aa5",
+        hover_color="#3a8bd9",
+        click_color="#0f4a7a",
+        text_color="white",
+        font=("Arial", 24, "bold"),
+        **kwargs
+    ):
+        super().__init__(master, width=size, height=size, fg_color="transparent")
+        
+        # ห้าม Frame ยืดหดตามลูก
+        self.pack_propagate(False)
+        
+        self.size = size
+        self.base_size = size
+        self.current_size = size
+        self.is_animating = False
+        self.hovered = False
+        
+        # เก็บสี
+        self.default_color = fg_color
+        self.hover_color = hover_color
+        self.click_color = click_color
+        
+        # สร้างปุ่มจริง (วางด้วย place ให้อยู่กึ่งกลาง Frame)
+        self.btn = ctk.CTkButton(
+            self,
+            text=text,
+            width=size,
+            height=size,
+            corner_radius=size // 2,
+            fg_color=fg_color,
+            hover_color=fg_color,  # ปิด Hover ของปุ่มเดิม ให้เราจัดการเอง
+            text_color=text_color,
+            font=font,
+            command=command,
+            **kwargs
+        )
+        self.btn.place(relx=0.5, rely=0.5, anchor="center")
+        
+        # ผูก Event
+        self.btn.bind("<Enter>", self.on_enter)
+        self.btn.bind("<Leave>", self.on_leave)
+        self.btn.bind("<Button-1>", self.on_click)
+        self.btn.bind("<ButtonRelease-1>", self.on_release)
+
+    # ------------------- ฟังก์ชันปรับขนาดแบบมี Animation -------------------
+    def _set_btn_size(self, new_size):
+        """ปรับขนาดปุ่มและรัศมีให้เป็นวงกลมเสมอ"""
+        self.btn.configure(width=new_size, height=new_size, corner_radius=new_size // 2)
+        self.current_size = new_size
+
+    def animate_scale(self, target_size, steps=10, interval=8):
+        """ปรับขนาดแบบค่อยเป็นค่อยไป (Easing)"""
+        if self.is_animating:
+            return
+        self.is_animating = True
+        
+        start_size = self.current_size
+        diff = target_size - start_size
+        
+        if diff == 0:
+            self.is_animating = False
+            return
+
+        step = diff / steps
+
+        def step_anim(step_count):
+            if step_count <= 0:
+                self._set_btn_size(target_size)
+                self.is_animating = False
+                return
+            # คำนวณขนาดใหม่แบบเส้นตรง
+            progress = steps - step_count + 1
+            new_size = int(start_size + step * progress)
+            self._set_btn_size(new_size)
+            self.after(interval, lambda: step_anim(step_count - 1))
+        
+        step_anim(steps)
+
+    # ------------------- Event Handlers -------------------
+    def on_enter(self, event):
+        self.hovered = True
+        self.animate_scale(int(self.base_size * 1.15), steps=8, interval=8)
+        self.btn.configure(fg_color=self.hover_color)
+
+    def on_leave(self, event):
+        self.hovered = False
+        self.animate_scale(self.base_size, steps=8, interval=8)
+        self.btn.configure(fg_color=self.default_color)
+
+    def on_click(self, event):
+        if self.hovered:
+            self.animate_scale(int(self.base_size * 0.93), steps=4, interval=8)
+            self.btn.configure(fg_color=self.click_color)
+
+    def on_release(self, event):
+        if self.hovered:
+            self.animate_scale(int(self.base_size * 1.15), steps=4, interval=8)
+            self.btn.configure(fg_color=self.hover_color)
+        else:
+            self.animate_scale(self.base_size, steps=4, interval=8)
+            self.btn.configure(fg_color=self.default_color)
