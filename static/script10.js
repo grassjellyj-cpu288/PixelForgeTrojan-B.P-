@@ -1,10 +1,27 @@
-// script10.js - ปุ่มเปิด main.py (แก้ไขแล้ว พร้อม Debug)
+// ============================================================
+// script10.js - ปุ่มเปิด TTS Studio (พร้อมระบบแจ้งเตือน)
+// รองรับทั้ง Localhost และ Render
+// ============================================================
+
 (function() {
     "use strict";
 
-    const SERVER_URL = 'http://localhost:5000';  // ถ้าใช้ IP อื่นให้เปลี่ยนที่นี่
+    // ==========================================================
+    // กำหนดค่า
+    // ==========================================================
 
-    // ---- สร้างปุ่มลอย ----
+    // ใช้ URL เดียวกับที่เปิดหน้าเว็บ (relative) หรือ localhost:5000
+    const SERVER_URL = (window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1')
+        ? 'http://localhost:5000'
+        : window.location.origin;   // ถ้าอยู่บน Render ให้ใช้ origin เดียว
+
+    const TIMEOUT_MS = 5000;        // 5 วินาที
+    const CHECK_INTERVAL = 15000;   // ตรวจสอบสถานะทุก 15 วินาที
+
+    // ==========================================================
+    // สร้างปุ่มลอย (ถ้ายังไม่มี)
+    // ==========================================================
+
     function createFloatingButton() {
         if (document.getElementById('script10-btn')) return;
 
@@ -13,7 +30,7 @@
         btn.innerHTML = '🚀 เปิด TTS Studio';
         btn.style.cssText = `
             position: fixed;
-            bottom: 30px;
+            bottom: 100px;
             right: 30px;
             z-index: 9999;
             padding: 14px 24px;
@@ -33,7 +50,7 @@
             gap: 8px;
         `;
 
-        // จุดสถานะ
+        // จุดสถานะ (ตัวบ่งชี้)
         const indicator = document.createElement('span');
         indicator.id = 'script10-status';
         indicator.textContent = '●';
@@ -45,7 +62,7 @@
         `;
         btn.prepend(indicator);
 
-        // Hover effect
+        // เอฟเฟกต์ Hover
         btn.addEventListener('mouseenter', () => {
             btn.style.transform = 'scale(1.05)';
             btn.style.boxShadow = '0 12px 32px rgba(96, 165, 250, 0.6)';
@@ -57,27 +74,25 @@
 
         document.body.appendChild(btn);
 
-        // ผูก Event
+        // ผูก Event คลิก
         btn.addEventListener('click', function(e) {
             e.stopPropagation();
             runMainPy();
         });
 
-        // ตรวจสอบสถานะเซิร์ฟเวอร์ทันที
-        checkServerStatus();
-        // และตรวจสอบทุก 15 วินาที
-        setInterval(checkServerStatus, 15000);
-
         return btn;
     }
 
-    // ---- ตรวจสอบสถานะเซิร์ฟเวอร์ (ใช้ GET /status) ----
+    // ==========================================================
+    // ฟังก์ชันตรวจสอบสถานะเซิร์ฟเวอร์
+    // ==========================================================
+
     async function checkServerStatus() {
         const indicator = document.getElementById('script10-status');
         if (!indicator) return;
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 2500); // timeout 2.5 วินาที
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
         try {
             const response = await fetch(`${SERVER_URL}/status`, {
@@ -90,32 +105,37 @@
                 const data = await response.json();
                 if (data.main_running) {
                     indicator.textContent = '●';
-                    indicator.style.color = '#4ADE80';  // เขียว = กำลังทำงาน
+                    indicator.style.color = '#4ADE80'; // เขียว = กำลังทำงาน
                 } else {
                     indicator.textContent = '●';
-                    indicator.style.color = '#60A5FA';  // ฟ้า = พร้อม แต่ main ยังไม่เปิด
+                    indicator.style.color = '#60A5FA'; // ฟ้า = พร้อม
                 }
             } else {
                 indicator.textContent = '○';
-                indicator.style.color = '#F87171';  // แดง = server error
+                indicator.style.color = '#F87171'; // แดง = server error
             }
         } catch (error) {
             clearTimeout(timeoutId);
             indicator.textContent = '○';
-            indicator.style.color = '#F87171';  // แดง = ไม่เชื่อมต่อ
+            indicator.style.color = '#F87171'; // แดง = ไม่เชื่อมต่อ
         }
     }
 
-    // ---- เรียก API เพื่อเปิด main.py ----
+    // ==========================================================
+    // ฟังก์ชันเปิด main.py (เรียก API /run-main)
+    // ==========================================================
+
     async function runMainPy() {
         const btn = document.getElementById('script10-btn');
         const originalText = btn.innerHTML;
+
+        // เปลี่ยนสถานะปุ่ม (กำลังโหลด)
         btn.innerHTML = '⏳ กำลังเปิด...';
         btn.disabled = true;
         btn.style.opacity = '0.7';
 
         const controller = new AbortController();
-        const timeoutId = setTimeout(() => controller.abort(), 5000); // timeout 5 วินาที
+        const timeoutId = setTimeout(() => controller.abort(), TIMEOUT_MS);
 
         try {
             const response = await fetch(`${SERVER_URL}/run-main`, {
@@ -132,20 +152,21 @@
                 } else if (data.status === 'warning') {
                     showToast('⚠️ ' + data.message, '#FACC15');
                 } else {
-                    showToast('❌ ' + data.message, '#F87171');
+                    showToast('❌ ' + (data.message || 'เกิดข้อผิดพลาด'), '#F87171');
                 }
             } else {
-                showToast('❌ ' + (data.message || 'เกิดข้อผิดพลาด'), '#F87171');
+                showToast('❌ ' + (data.message || 'Server error'), '#F87171');
             }
         } catch (error) {
             clearTimeout(timeoutId);
             if (error.name === 'AbortError') {
-                showToast('⏰ หมดเวลารอตอบกลับ (server อาจไม่ตอบ)', '#F87171');
+                showToast('⏰ เซิร์ฟเวอร์ไม่ตอบกลับ (หมดเวลา) กรุณาตรวจสอบว่า server.exe เปิดอยู่', '#F87171');
             } else {
-                showToast('❌ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์ (' + SERVER_URL + ')', '#F87171');
+                showToast('❌ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์: ' + error.message, '#F87171');
             }
             console.error('script10.js: fetch error', error);
         } finally {
+            // คืนค่าปุ่ม
             btn.innerHTML = originalText;
             btn.disabled = false;
             btn.style.opacity = '1';
@@ -154,8 +175,12 @@
         }
     }
 
-    // ---- Toast Notification ----
+    // ==========================================================
+    // Toast Notification (แจ้งเตือนแบบลอย)
+    // ==========================================================
+
     function showToast(message, color = '#4ADE80') {
+        // ลบ Toast เก่าถ้ามี
         const old = document.getElementById('script10-toast');
         if (old) old.remove();
 
@@ -164,7 +189,7 @@
         toast.textContent = message;
         toast.style.cssText = `
             position: fixed;
-            bottom: 100px;
+            bottom: 160px;
             right: 30px;
             z-index: 10000;
             padding: 14px 24px;
@@ -182,13 +207,17 @@
         `;
         document.body.appendChild(toast);
 
+        // ลบอัตโนมัติหลังจาก 5 วินาที
         setTimeout(() => {
             toast.style.opacity = '0';
             setTimeout(() => toast.remove(), 300);
-        }, 4000);
+        }, 5000);
     }
 
-    // ---- Inject CSS animation ----
+    // ==========================================================
+    // เพิ่ม CSS animation (ถ้ายังไม่มี)
+    // ==========================================================
+
     function injectStyles() {
         if (document.getElementById('script10-styles')) return;
         const style = document.createElement('style');
@@ -202,14 +231,21 @@
         document.head.appendChild(style);
     }
 
-    // ---- เริ่มเมื่อ DOM พร้อม ----
+    // ==========================================================
+    // เริ่มต้นเมื่อ DOM พร้อม
+    // ==========================================================
+
     function init() {
         injectStyles();
         createFloatingButton();
-        console.log('✅ script10.js โหลดสำเร็จ (ปุ่มเปิด TTS Studio)');
-        console.log(`🔗 เชื่อมต่อที่ ${SERVER_URL}`);
+        // ตรวจสอบสถานะครั้งแรก
+        checkServerStatus();
+        // ตรวจสอบซ้ำทุก 15 วินาที
+        setInterval(checkServerStatus, CHECK_INTERVAL);
+        console.log('✅ script10.js โหลดสำเร็จ (SERVER_URL =', SERVER_URL, ')');
     }
 
+    // รอให้ DOM พร้อม
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', init);
     } else {
